@@ -1,3 +1,3 @@
-# Python-Notebooks
+# R-Notebooks
 
-This include Python sample code files for Data Analysis
+This include R sample code files for Data Analysis
