@@ -1,0 +1,156 @@
+---
+title: "CMHC Housing COVID-19- 2018 TO 2020"
+author: "Ankit Nagarsheth"
+date: "8/18/2020"
+output: html_document
+tidy: styler
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	out.width = '100%'
+)
+```
+
+### The Workbook summarizes the Canadian Housing,starts,completes and constructions during Covid-19. It analysys data from 2018 to 2020.This data was downloaded from https://www150.statcan.gc.ca/ ###
+
+## INSTALL AND LOAD PACKAGES ################################
+
+```{r install packages}
+# Install pacman ("package manager") if needed
+if (!require("pacman")) install.packages("pacman")
+
+# pacman must already be installed; then load contributed
+# packages (including pacman) with pacman
+pacman::p_load(pacman,reticulate,rio, tidyverse,rvest,esquisse,ggthemes,ggraph,tidytext,patchwork,wordcloud2,janitor,glue,scales,RSiteCatalyst,skimr,here,rmdformats)
+
+
+
+```
+
+
+
+```{r import data}
+
+
+## IMPORT DATA ######
+cmhc <- import("https://raw.githubusercontent.com/ankitnagarsheth/RNotebooks/master/analysis/3410015101-noSymbol-2018-2020.csv")
+
+```
+
+```{r gather the data}
+
+
+df <-  cmhc %>% 
+  gather(key = yr,value = measure,-`Housing estimates`, -`Type of unit`)
+
+glimpse(df)
+```
+
+
+
+## Lets Wrangle the data ####
+```{r wrangle the data}
+
+
+df_cmhc <- df %>% as_tibble()
+glimpse(df_cmhc)
+
+
+
+df_cmhc %>% count(`Type of unit`,sort = TRUE)
+
+df_cmhc <- df_cmhc %>% 
+  mutate(counts = parse_number(measure)) %>% 
+  mutate(Housing_Category = as_factor(`Housing estimates`)) %>% 
+  mutate(type_of_unit = as_factor(`Type of unit`)) %>% 
+  select(Housing_Category,type_of_unit,counts,yr) %>% 
+  separate(yr,c("month","year"),sep = "-",remove=FALSE) %>% 
+  glimpse()
+
+
+df_cmhc <- df_cmhc %>% 
+  filter(type_of_unit %in%  c("Single-detached units","Semi-detached units","Row units","Apartment and other units"))
+
+df_cmhc <- df_cmhc %>% 
+  mutate(yr = parse_date(yr, '%b-%y'))
+
+
+# Group by
+
+
+df_cmhc_cat <- df_cmhc %>% 
+  group_by(yr,Housing_Category,type_of_unit) %>%
+  
+  summarise(n = n(),avg = mean(counts),total = sum(counts)) %>% 
+  arrange(desc(avg))
+
+```
+
+## VISUALIZE ####
+
+## Insight =  Apartment units have huge volumes  ######
+
+```{r bar chart}
+
+
+
+
+df_cmhc_cat %>%
+  filter(!(Housing_Category %in% "Housing under construction")) %>%
+  ggplot() +
+  aes(x = yr, fill = type_of_unit, weight = total) +
+  geom_bar() +
+  scale_fill_hue() +
+  theme_minimal()
+
+
+```
+
+## Insight =  Housing starts are in huge number and completes are in phases ########
+
+
+
+```{r density plot}
+
+df_cmhc_cat %>%
+  filter(!(Housing_Category %in% "Housing under construction")) %>%
+  ggplot() +
+  aes(x = avg, fill = Housing_Category) +
+  geom_density(adjust = 1.4) +
+  scale_fill_hue() +
+  theme_minimal()
+
+
+```
+
+## Insight = Highest type of units which are started are Apartment units followed by single detached units and then row units ######
+
+
+```{r bar chart2}
+
+ggplot(df_cmhc_cat) +
+  aes(x = Housing_Category, fill = type_of_unit, weight = avg) +
+  geom_bar() +
+  scale_fill_hue() +
+  theme_minimal()
+```
+
+##  Insight = Apartment and other units have huge volume in terms of starts,construction and completions ########
+
+```{r histogram}
+
+ggplot(df_cmhc) +
+ aes(x = counts, fill = type_of_unit) +
+ geom_histogram(bins = 30L) +
+ scale_fill_hue() +
+ theme_minimal()
+
+
+
+
