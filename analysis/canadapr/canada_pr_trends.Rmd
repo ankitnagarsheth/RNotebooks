@@ -1,0 +1,261 @@
+---
+title: "Canada PR cases"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::material:
+    highlight: kate
+---
+
+ 
+
+```{r setup, echo=FALSE, cache=FALSE}
+library(knitr)
+library(rmdformats)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(echo=TRUE,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+```
+
+
+## Canada PR by citizenship
+
+# INSTALL AND LOAD PACKAGES ################################
+
+
+```{r intall packages}
+if (!require("pacman")) install.packages("pacman")
+
+# pacman must already be installed; then load contributed
+# packages (including pacman) with pacman
+pacman::p_load(pacman, rio, tidyverse,DataExplorer,viridis,hrbrthemes,skimr,plotly,DT,scales,ggrepel)
+# pacman: for loading/unloading packages
+# rio: for importing data
+```
+
+# GET THE DATA################################
+
+<!-- # lets read the data -->
+
+```{r import data}
+df_canada_pr <- import("http://www.cic.gc.ca/opendata-donneesouvertes/data/IRCC_M_PRadmiss_0002_E.xls",skip = 3)
+```
+<!-- # lets convert it to a tibble -->
+
+```{r tibble}
+
+
+df_canada_pr <-  df_canada_pr%>% 
+as_tibble()
+```
+<!-- # Lets Skim over the data -->
+
+colnames (df_canada_pr) [1]<- "Country of citizenship"
+
+df_canada_pr1 <- df_canada_pr %>% 
+slice(-1:-1) %>% 
+select("Country of citizenship","2015 Total","2016 Total","2017 Total","2018 Total","2019 Total","2020 Total") 
+
+
+<!-- # Lets Gather the data-->
+library(lubridate)
+df_canada_clean <- df_canada_pr1 %>% 
+  gather(key = "yearly_pr",value,starts_with("2"),-"Country of citizenship",na.rm = TRUE) %>% 
+  mutate(value=ifelse(value =="--", 0, value)) %>% 
+  mutate(value = as.numeric(value)) %>%
+  mutate(yearly_pr = str_remove(yearly_pr," Total"))
+
+# Lets chart out PR granted by Country and percent weight
+```{r}
+
+
+df_canada_clean %>% 
+  filter(`Country of citizenship`!= "Total") %>% 
+  group_by(`Country of citizenship`) %>% 
+  summarise(total_pr_granted = sum(value), mean = round(mean(value),0), .groups = 'drop') %>% 
+  mutate( percent_weight = round(total_pr_granted / sum(total_pr_granted) *100,2)) %>% 
+  arrange(desc(total_pr_granted)) %>% 
+datatable(rownames = FALSE, filter="top")
+
+
+
+
+```
+
+# Lets see the table for PR granted by Country and percentage increase
+
+```{r}
+df_canada_clean %>% 
+  # filter(`Country of citizenship`!= "Total") %>% 
+  group_by(`Country of citizenship`,`yearly_pr`) %>% 
+  summarise(total_pr_granted = sum(value), .groups = 'drop') %>% 
+  mutate(percent_increase_cases = round((total_pr_granted/lag(total_pr_granted) - 1 )  * 100,2)) %>% 
+  arrange(desc(yearly_pr)) %>% 
+datatable(rownames = FALSE, filter="top")
+```
+
+
+# Lets chart out line graph ofr yearly PR granted
+
+```{r}
+df_pr_line <- df_canada_clean %>% 
+  filter(`Country of citizenship`!= "Total" & yearly_pr != "2020") %>% 
+  group_by(`Country of citizenship`,`yearly_pr`) %>% 
+  summarise(total_pr_granted = sum(value), .groups = 'drop') %>% 
+  arrange(desc(total_pr_granted)) %>%
+  top_n(30) %>% 
+ggplot( aes(x=yearly_pr, y=total_pr_granted , group=`Country of citizenship`, color=`Country of citizenship`)) +
+    geom_line() +
+   scale_color_brewer(palette = "Spectral") +
+    ggtitle("Yearly PR Granted") +
+    theme_ipsum() +
+    ylab("pr granted")
+
+ggplotly(df_pr_line)
+
+```
+
+# Lets do a boxplot
+
+
+
+```{r}
+library(viridis)
+library(hrbrthemes)
+df_pr_box <- df_canada_clean %>% 
+  filter(`Country of citizenship`!= "Total" & yearly_pr != "2020") %>% 
+  group_by(`Country of citizenship`,`yearly_pr`) %>% 
+  summarise(total_pr_granted = sum(value), .groups = 'drop') %>% 
+  arrange(desc(total_pr_granted)) %>%
+filter(total_pr_granted > 8000) %>% 
+  mutate(`Country of citizenship` = fct_reorder(`Country of citizenship`,total_pr_granted)) %>% 
+ggplot(aes(x = `Country of citizenship`, y=total_pr_granted, fill='Country of citizenship')) + 
+    geom_boxplot(alpha=0.3) +
+    theme_ipsum() +
+    theme(legend.position="none") +
+    xlab("")+
+   scale_fill_brewer(palette="BuPu")+
+  expand_limits(y = 0)
+
+ggplotly(df_pr_box)
+
+```
+
+
+# Lets compare India to others
+
+```{r}
+library(viridis)
+library(hrbrthemes)
+df_pr_bar <- df_canada_clean %>% 
+  filter(`Country of citizenship`!= "Total" & yearly_pr != "2020") %>% 
+  group_by(`Country of citizenship`,`yearly_pr`) %>% 
+  summarise(total_pr_granted = sum(value), .groups = 'drop') %>% 
+  mutate(country_india = fct_other(`Country of citizenship`, keep = "India")) %>% 
+  ggplot(aes(x=country_india, y=total_pr_granted)) +
+  geom_point() +
+  theme_ipsum()+
+  scale_color_brewer() +
+  theme(legend.position="none")
+    
+    
+
+ggplotly(df_pr_bar)
+```
+
+
+
+
+
+
+
+# Lets see faceted data
+```{r}
+
+df_pr_faceted <- df_canada_clean %>% 
+  filter(`Country of citizenship`!= "Total" & yearly_pr != "2020") %>% 
+  group_by(`Country of citizenship`,`yearly_pr`) %>% 
+  summarise(total_pr_granted = sum(value), .groups = 'drop') %>% 
+  arrange(desc(total_pr_granted)) %>%
+ filter(total_pr_granted > 5000) %>% 
+  mutate(`Country of citizenship` = fct_reorder(`Country of citizenship`,total_pr_granted)) %>% 
+  ggplot( aes(x=yearly_pr, y=total_pr_granted, group=`Country of citizenship`, color=`Country of citizenship`)) +
+   geom_area() +
+    scale_fill_viridis(discrete = TRUE) +
+    theme(legend.position="none") +
+    ggtitle("PR Granted by each country is last 5 years") +
+    theme_ipsum() +
+    theme(
+      legend.position="none",
+      panel.spacing = unit(0, "lines"),
+      strip.text.x = element_text(size = 8),
+      plot.title = element_text(size=13)
+    ) +
+    facet_wrap(~`Country of citizenship`, scale="free_y")
+
+ggplotly(df_pr_faceted)
+```
+
+
+
+# Lets see the data using ridges
+
+```{r}
+library(viridis)
+library(hrbrthemes)
+ df_canada_clean %>% 
+  filter(`Country of citizenship`!= "Total" & yearly_pr != "2020") %>% 
+  group_by(`Country of citizenship`,`yearly_pr`) %>% 
+  summarise(total_pr_granted = sum(value), .groups = 'drop') %>% 
+  filter(total_pr_granted > 5000) %>% 
+ggplot(aes(x = total_pr_granted, y = `Country of citizenship`, fill = `Country of citizenship`)) +
+  geom_density_ridges() +
+  theme_ridges() + 
+  theme(legend.position = "none")
+    
+```
+# Lets Convert it into date
+
+```{r}
+library(hrbrthemes)
+df_pr_scatter <- df_canada_clean %>% 
+  filter(`Country of citizenship`!= "Total" & yearly_pr != "2020") %>% 
+  group_by(`Country of citizenship`,`yearly_pr`) %>% 
+  summarise(total_pr_granted = sum(value), .groups = 'drop') %>% 
+  arrange(desc(total_pr_granted)) %>%
+ filter(total_pr_granted > 10000) %>% 
+  ggplot(aes(x=yearly_pr, y=total_pr_granted ,color = `Country of citizenship`)) +
+  geom_line() +
+    geom_point()+
+    theme_ipsum()
+ggplotly(df_pr_scatter)
+    ```
+
+
+# Lets Convert geom_text
+
+```{r}
+library(ggrepel)
+library(hrbrthemes)
+df_pr_text <- df_canada_clean %>% 
+  filter(`Country of citizenship`!= "Total" & yearly_pr != "2020") %>% 
+  group_by(`Country of citizenship`,`yearly_pr`) %>% 
+  summarise(total_pr_granted = sum(value), .groups = 'drop') %>% 
+  arrange(desc(total_pr_granted)) %>%
+ filter(total_pr_granted > 10000) %>% 
+  ggplot(aes(x=yearly_pr,y=total_pr_granted ,color = `Country of citizenship`)) +
+  geom_point()+
+  geom_text(aes(label=`Country of citizenship`), 
+    nudge_x = 0.25, nudge_y = 0.25, 
+    check_overlap = TRUE
+  ) +
+    theme_ipsum()
+ggplotly(df_pr_text)
+    ```
